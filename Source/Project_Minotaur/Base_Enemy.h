@@ -21,9 +21,6 @@ public:
     UFUNCTION(BlueprintPure, Category = "Enemy|Health")
     bool IsDead() const;
 
-    UFUNCTION(BlueprintPure, Category = "Enemy|Health")
-    float GetHealthPercent() const;
-
     UFUNCTION(BlueprintPure, Category = "Enemy|Combat")
     bool IsAttacking() const;
 

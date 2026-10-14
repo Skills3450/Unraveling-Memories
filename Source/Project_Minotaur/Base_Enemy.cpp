@@ -57,16 +57,6 @@ bool ABase_Enemy::IsDead() const
     return CurrentHealth <= 0.0f;
 }
 
-float ABase_Enemy::GetHealthPercent() const
-{
-    if (MaxHealth <= 0.0f)
-    {
-        return 0.0f;
-    }
-
-    return CurrentHealth / MaxHealth;
-}
-
 bool ABase_Enemy::CanMove() const
 {
     return bCanMove && !IsDead();
