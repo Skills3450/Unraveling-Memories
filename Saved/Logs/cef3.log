@@ -1,6 +1,15 @@
-[29684:28688:0925/034529.036:WARNING:chrome_main_delegate.cc(745)] This is Chrome version 128.0.6613.138 (not a warning)
-[29684:35496:0925/034529.266:ERROR:google_update_settings.cc(265)] Failed opening key Software\Chromium to set usagestats; result: 5
-[29684:28688:0925/034529.372:WARNING:account_consistency_mode_manager.cc(77)] Desktop Identity Consistency cannot be enabled as no OAuth client ID and client secret have been configured.
-[34824:30016:0925/034537.081:WARNING:frame_impl.cc(430)] virtual CefFrameImpl::SendProcessMessage sent to detached frame 5-30ED4E4A61BEEBC78EF1C48D15328A63 will be ignored
-[35568:35640:0925/034537.226:WARNING:spdy_session.cc(2985)] Received HEADERS for invalid stream 15
-[29684:28688:0925/034600.809:WARNING:pref_notifier_impl.cc(41)] Pref observer for media_router.cast_allow_all_ips found at shutdown.
+[24476:29732:1016/052449.389:WARNING:chrome_main_delegate.cc(745)] This is Chrome version 128.0.6613.138 (not a warning)
+[24476:32840:1016/052449.417:ERROR:google_update_settings.cc(265)] Failed opening key Software\Chromium to set usagestats; result: 5
+[24476:29732:1016/052449.424:WARNING:account_consistency_mode_manager.cc(77)] Desktop Identity Consistency cannot be enabled as no OAuth client ID and client secret have been configured.
+[24476:23372:1016/052451.248:WARNING:leveldb_database.cc(141)] Unable to open C:\Users\Wuxia\OneDrive\Documents\Github\Unraveling-Memories\Saved\webcache_6613\Default\shared_proto_db\metadata: IO error: C:\Users\Wuxia\OneDrive\Documents\Github\Unraveling-Memories\Saved\webcache_6613\Default\shared_proto_db\metadata/MANIFEST-000001: Unable to create sequential file (ChromeMethodBFE: 7::NewSequentialFile::1)
+[24476:23372:1016/052451.251:WARNING:leveldb_database.cc(141)] Unable to open C:\Users\Wuxia\OneDrive\Documents\Github\Unraveling-Memories\Saved\webcache_6613\Default\shared_proto_db\metadata: IO error: C:\Users\Wuxia\OneDrive\Documents\Github\Unraveling-Memories\Saved\webcache_6613\Default\shared_proto_db\metadata/MANIFEST-000001: Unable to create sequential file (ChromeMethodBFE: 7::NewSequentialFile::1)
+[24476:23372:1016/052451.254:WARNING:leveldb_database.cc(141)] Unable to open C:\Users\Wuxia\OneDrive\Documents\Github\Unraveling-Memories\Saved\webcache_6613\Default\shared_proto_db\metadata: IO error: C:\Users\Wuxia\OneDrive\Documents\Github\Unraveling-Memories\Saved\webcache_6613\Default\shared_proto_db\metadata/MANIFEST-000001: Unable to create sequential file (ChromeMethodBFE: 7::NewSequentialFile::1)
+[24476:23372:1016/052451.256:WARNING:leveldb_database.cc(141)] Unable to open C:\Users\Wuxia\OneDrive\Documents\Github\Unraveling-Memories\Saved\webcache_6613\Default\shared_proto_db\metadata: IO error: C:\Users\Wuxia\OneDrive\Documents\Github\Unraveling-Memories\Saved\webcache_6613\Default\shared_proto_db\metadata/MANIFEST-000001: Unable to create sequential file (ChromeMethodBFE: 7::NewSequentialFile::1)
+[24476:28708:1016/052451.573:WARNING:value_store_frontend.cc(47)] Reading ahfgeienlihckogmohjhadlkjgocpleb.alarms from  failed: IO error: .../MANIFEST-000001: Unable to create sequential file (ChromeMethodBFE: 7::NewSequentialFile::1)
+[24476:28708:1016/052451.575:WARNING:value_store_frontend.cc(47)] Reading mhjfbmdgcfjbbpaeojofohoefgiehjai.alarms from  failed: IO error: .../MANIFEST-000001: Unable to create sequential file (ChromeMethodBFE: 7::NewSequentialFile::1)
+[33068:26432:1016/052452.407:WARNING:frame_impl.cc(430)] virtual CefFrameImpl::SendProcessMessage sent to detached frame 5-E745936C607BD0D89597762B17CEB0C1 will be ignored
+[30560:23728:1016/052455.597:ERROR:ssl_client_socket_impl.cc(882)] handshake failed; returned -1, SSL error code 1, net_error -100
+[30560:23728:1016/052455.647:ERROR:ssl_client_socket_impl.cc(882)] handshake failed; returned -1, SSL error code 1, net_error -100
+[30560:23728:1016/052504.154:ERROR:ssl_client_socket_impl.cc(882)] handshake failed; returned -1, SSL error code 1, net_error -100
+[30560:23728:1016/052514.412:ERROR:ssl_client_socket_impl.cc(882)] handshake failed; returned -1, SSL error code 1, net_error -100
+[24476:29732:1016/053208.237:WARNING:pref_notifier_impl.cc(41)] Pref observer for media_router.cast_allow_all_ips found at shutdown.
