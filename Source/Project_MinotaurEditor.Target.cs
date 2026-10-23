@@ -8,7 +8,7 @@ public class Project_MinotaurEditorTarget : TargetRules
 	public Project_MinotaurEditorTarget(TargetInfo Target) : base(Target)
 	{
 		Type = TargetType.Editor;
-		DefaultBuildSettings = BuildSettingsVersion.V6;
+		DefaultBuildSettings = BuildSettingsVersion.V7;
 
 		ExtraModuleNames.AddRange( new string[] { "Project_Minotaur" } );
 	}
