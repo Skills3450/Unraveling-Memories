@@ -1,22 +1,23 @@
 {
 	"FileVersion": 3,
-	"EngineAssociation": "5.7",
+	"EngineAssociation": "5.8",
 	"Category": "",
 	"Description": "",
 	"Modules": [
 		{
 			"Name": "Project_Minotaur",
 			"Type": "Runtime",
-			"LoadingPhase": "Default",
-			"AdditionalDependencies": [
-				"Engine"
-			]
+			"LoadingPhase": "Default"
 		}
 	],
 	"Plugins": [
 		{
 			"Name": "ModelingToolsEditorMode",
 			"Enabled": true
-		},
-			]
+		}
+	],
+	"TargetPlatforms": [],
+	"AdditionalRootDirectories": [],
+	"AdditionalPluginDirectories": [],
+	"EpicSampleNameHash": ""
 }

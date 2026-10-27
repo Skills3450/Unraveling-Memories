@@ -1,3 +1,4 @@
+
 #pragma once
 
 #include "CoreMinimal.h"
@@ -10,7 +11,8 @@ enum class EPowerupEffectType : uint8
 	JumpMultiplier		UMETA(DisplayName = "Jump Height"),
 	DamageMultiplier	UMETA(DisplayName = "Damage"),
 	HealthBonus			UMETA(DisplayName = "Max Health"),
-	ShieldBonus			UMETA(DisplayName = "Shield")
+	ShieldBonus			UMETA(DisplayName = "Shield"),
+	Dash				UMETA(DisplayName = "Dash")
 };
 
 UENUM(BlueprintType)

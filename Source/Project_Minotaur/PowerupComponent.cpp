@@ -1,8 +1,10 @@
+
 #include "PowerupComponent.h"
 #include "PowerupDefinition.h"
 
 #include "GameFramework/Character.h"
 #include "GameFramework/CharacterMovementComponent.h"
+#include "TimerManager.h"
 
 UPowerupComponent::UPowerupComponent()
 {
@@ -35,18 +37,15 @@ void UPowerupComponent::GivePowerup(UPowerupDefinition* Powerup)
 		return;
 	}
 
-	// Check whether the player already has this powerup
 	for (FActivePowerup& ActivePowerup : ActivePowerups)
 	{
 		if (ActivePowerup.Definition == Powerup)
 		{
-			// Don't allow stacking
 			if (Powerup->StackMode == EPowerupStackMode::NoStack)
 			{
 				return;
 			}
 
-			// Add another stack
 			if (ActivePowerup.Stacks < Powerup->MaxStacks)
 			{
 				ActivePowerup.Stacks++;
@@ -57,7 +56,6 @@ void UPowerupComponent::GivePowerup(UPowerupDefinition* Powerup)
 		}
 	}
 
-	// New powerup
 	FActivePowerup NewPowerup;
 	NewPowerup.Definition = Powerup;
 	NewPowerup.Stacks = 1;
@@ -79,9 +77,7 @@ void UPowerupComponent::RemovePowerup(UPowerupDefinition* Powerup)
 		if (ActivePowerups[i].Definition == Powerup)
 		{
 			ActivePowerups.RemoveAt(i);
-
 			RecalculateEffects();
-
 			return;
 		}
 	}
@@ -112,7 +108,8 @@ bool UPowerupComponent::HasPowerup(UPowerupDefinition* Powerup) const
 	return false;
 }
 
-int32 UPowerupComponent::GetPowerupStacks(UPowerupDefinition* Powerup) const
+int32 UPowerupComponent::GetPowerupStacks(
+	UPowerupDefinition* Powerup) const
 {
 	if (!Powerup)
 	{
@@ -130,7 +127,8 @@ int32 UPowerupComponent::GetPowerupStacks(UPowerupDefinition* Powerup) const
 	return 0;
 }
 
-const TArray<FActivePowerup>& UPowerupComponent::GetActivePowerups() const
+const TArray<FActivePowerup>&
+UPowerupComponent::GetActivePowerups() const
 {
 	return ActivePowerups;
 }
@@ -155,7 +153,7 @@ float UPowerupComponent::GetEffectMultiplier(
 				continue;
 			}
 
-			int32 Stacks = ActivePowerup.Stacks;
+			const int32 Stacks = ActivePowerup.Stacks;
 
 			switch (ActivePowerup.Definition->StackMode)
 			{
@@ -165,20 +163,17 @@ float UPowerupComponent::GetEffectMultiplier(
 
 			case EPowerupStackMode::Additive:
 			{
-				float Bonus = Effect.Strength - 1.0f;
+				const float Bonus = Effect.Strength - 1.0f;
 				Result += Bonus * Stacks;
 				break;
 			}
 
 			case EPowerupStackMode::Multiplicative:
-			{
 				for (int32 i = 0; i < Stacks; i++)
 				{
 					Result *= Effect.Strength;
 				}
-
 				break;
-			}
 			}
 		}
 	}
@@ -211,18 +206,86 @@ float UPowerupComponent::GetEffectBonus(
 	return Result;
 }
 
+bool UPowerupComponent::TryDash()
+{
+	if (!bDashReady)
+	{
+		return false;
+	}
+
+	// The player must have an active powerup containing a Dash effect.
+	float EffectStrength = 0.0f;
+	bool bHasDashPowerup = false;
+
+	for (const FActivePowerup& ActivePowerup : ActivePowerups)
+	{
+		if (!ActivePowerup.Definition)
+		{
+			continue;
+		}
+
+		for (const FPowerupEffect& Effect :
+			ActivePowerup.Definition->Effects)
+		{
+			if (Effect.EffectType == EPowerupEffectType::Dash)
+			{
+				bHasDashPowerup = true;
+				EffectStrength = FMath::Max(
+					EffectStrength,
+					Effect.Strength
+				);
+			}
+		}
+	}
+
+	if (!bHasDashPowerup)
+	{
+		return false;
+	}
+
+	ACharacter* Character = Cast<ACharacter>(GetOwner());
+
+	if (!Character)
+	{
+		return false;
+	}
+
+	const FVector Forward = Character->GetActorForwardVector();
+	const float FinalDashStrength = DashStrength * EffectStrength;
+
+	// Apply the dash horizontally while preserving vertical velocity.
+	const FVector DashVelocity(
+		Forward.X * FinalDashStrength,
+		Forward.Y * FinalDashStrength,
+		0.0f
+	);
+
+	Character->LaunchCharacter(DashVelocity, true, false);
+
+	bDashReady = false;
+
+	if (GetWorld())
+	{
+		GetWorld()->GetTimerManager().SetTimer(
+			DashCooldownTimer,
+			this,
+			&UPowerupComponent::ResetDashCooldown,
+			DashCooldown,
+			false
+		);
+	}
+
+	return true;
+}
+
+void UPowerupComponent::ResetDashCooldown()
+{
+	bDashReady = true;
+}
+
 void UPowerupComponent::RecalculateEffects()
 {
 	ApplyMovementEffects();
-
-	// Other effects will use the getter functions.
-	// For example:
-	//
-	// Damage = BaseDamage *
-	// GetEffectMultiplier(EPowerupEffectType::DamageMultiplier)
-	//
-	// Health = BaseHealth +
-	// GetEffectBonus(EPowerupEffectType::HealthBonus)
 }
 
 void UPowerupComponent::ApplyMovementEffects()
@@ -242,15 +305,11 @@ void UPowerupComponent::ApplyMovementEffects()
 		return;
 	}
 
-	float SpeedMultiplier =
-		GetEffectMultiplier(
-			EPowerupEffectType::SpeedMultiplier
-		);
+	const float SpeedMultiplier =
+		GetEffectMultiplier(EPowerupEffectType::SpeedMultiplier);
 
-	float JumpMultiplier =
-		GetEffectMultiplier(
-			EPowerupEffectType::JumpMultiplier
-		);
+	const float JumpMultiplier =
+		GetEffectMultiplier(EPowerupEffectType::JumpMultiplier);
 
 	Movement->MaxWalkSpeed =
 		OriginalWalkSpeed * SpeedMultiplier;

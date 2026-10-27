@@ -1,3 +1,4 @@
+
 #pragma once
 
 #include "CoreMinimal.h"
@@ -28,37 +29,33 @@ public:
 
 	UPowerupComponent();
 
-	// Give a powerup to the owner
 	UFUNCTION(BlueprintCallable, Category = "Powerups")
 	void GivePowerup(UPowerupDefinition* Powerup);
 
-	// Remove a powerup completely
 	UFUNCTION(BlueprintCallable, Category = "Powerups")
 	void RemovePowerup(UPowerupDefinition* Powerup);
 
-	// Remove all powerups
 	UFUNCTION(BlueprintCallable, Category = "Powerups")
 	void RemoveAllPowerups();
 
-	// Check if player has a specific powerup
 	UFUNCTION(BlueprintPure, Category = "Powerups")
 	bool HasPowerup(UPowerupDefinition* Powerup) const;
 
-	// Get number of stacks
 	UFUNCTION(BlueprintPure, Category = "Powerups")
 	int32 GetPowerupStacks(UPowerupDefinition* Powerup) const;
 
-	// Get all currently active powerups
 	UFUNCTION(BlueprintPure, Category = "Powerups")
 	const TArray<FActivePowerup>& GetActivePowerups() const;
 
-	// Get a calculated multiplier for an effect
 	UFUNCTION(BlueprintPure, Category = "Powerups")
 	float GetEffectMultiplier(EPowerupEffectType EffectType) const;
 
-	// Get the total bonus for an effect
 	UFUNCTION(BlueprintPure, Category = "Powerups")
 	float GetEffectBonus(EPowerupEffectType EffectType) const;
+
+	// Call this from the player's input event to perform a dash.
+	UFUNCTION(BlueprintCallable, Category = "Powerups|Dash")
+	bool TryDash();
 
 protected:
 
@@ -71,6 +68,21 @@ private:
 
 	float OriginalWalkSpeed = 0.0f;
 	float OriginalJumpVelocity = 0.0f;
+
+	// Dash settings
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Powerups|Dash",
+		meta = (AllowPrivateAccess = "true", ClampMin = "0.0"))
+	float DashStrength = 1800.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Powerups|Dash",
+		meta = (AllowPrivateAccess = "true", ClampMin = "0.0"))
+	float DashCooldown = 0.75f;
+
+	bool bDashReady = true;
+
+	FTimerHandle DashCooldownTimer;
+
+	void ResetDashCooldown();
 
 	void RecalculateEffects();
 

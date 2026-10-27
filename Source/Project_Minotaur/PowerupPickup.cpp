@@ -5,9 +5,12 @@
 
 #include "Components/SphereComponent.h"
 #include "Components/StaticMeshComponent.h"
+#include "Components/TextRenderComponent.h"
 #include "GameFramework/Character.h"
+#include "GameFramework/PlayerController.h"
 
 #include "NiagaraFunctionLibrary.h"
+#include "InputCoreTypes.h"
 
 APowerupPickup::APowerupPickup()
 {
@@ -20,7 +23,7 @@ APowerupPickup::APowerupPickup()
 
 	RootComponent = Collision;
 
-	Collision->SetSphereRadius(75.0f);
+	Collision->SetSphereRadius(150.0f);
 
 	Collision->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
 	Collision->SetCollisionResponseToAllChannels(ECR_Ignore);
@@ -34,9 +37,28 @@ APowerupPickup::APowerupPickup()
 	Mesh->SetupAttachment(RootComponent);
 	Mesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 
+	InteractionText =
+		CreateDefaultSubobject<UTextRenderComponent>(
+			TEXT("InteractionText")
+		);
+
+	InteractionText->SetupAttachment(RootComponent);
+
+	InteractionText->SetText(FText::FromString(TEXT("Press E")));
+	InteractionText->SetHorizontalAlignment(EHTA_Center);
+	InteractionText->SetVerticalAlignment(EVRTA_TextCenter);
+	InteractionText->SetWorldSize(35.0f);
+	InteractionText->SetRelativeLocation(FVector(0.0f, 0.0f, 120.0f));
+	InteractionText->SetVisibility(false);
+
 	Collision->OnComponentBeginOverlap.AddDynamic(
 		this,
 		&APowerupPickup::OnOverlapBegin
+	);
+
+	Collision->OnComponentEndOverlap.AddDynamic(
+		this,
+		&APowerupPickup::OnOverlapEnd
 	);
 }
 
@@ -44,18 +66,28 @@ void APowerupPickup::BeginPlay()
 {
 	Super::BeginPlay();
 
+	EnableInput(GetWorld()->GetFirstPlayerController());
+
+	if (InputComponent)
+	{
+		InputComponent->BindKey(
+			EKeys::E,
+			IE_Pressed,
+			this,
+			&APowerupPickup::Interact
+		);
+	}
+
 	if (!PowerupDefinition)
 	{
 		return;
 	}
 
-	// Set the mesh from the Data Asset
 	if (PowerupDefinition->PickupMesh)
 	{
 		Mesh->SetStaticMesh(PowerupDefinition->PickupMesh);
 	}
 
-	// Spawn the Niagara effect from the Data Asset
 	if (PowerupDefinition->PickupEffect)
 	{
 		UNiagaraFunctionLibrary::SpawnSystemAttached(
@@ -79,6 +111,50 @@ void APowerupPickup::OnOverlapBegin(
 	const FHitResult& SweepResult)
 {
 	ACharacter* Character = Cast<ACharacter>(OtherActor);
+
+	if (!Character)
+	{
+		return;
+	}
+
+	bPlayerInRange = true;
+	InteractionText->SetVisibility(true);
+}
+
+void APowerupPickup::OnOverlapEnd(
+	UPrimitiveComponent* OverlappedComponent,
+	AActor* OtherActor,
+	UPrimitiveComponent* OtherComp,
+	int32 OtherBodyIndex)
+{
+	ACharacter* Character = Cast<ACharacter>(OtherActor);
+
+	if (!Character)
+	{
+		return;
+	}
+
+	bPlayerInRange = false;
+	InteractionText->SetVisibility(false);
+}
+
+void APowerupPickup::Interact()
+{
+	if (!bPlayerInRange)
+	{
+		return;
+	}
+
+	APlayerController* PlayerController =
+		GetWorld()->GetFirstPlayerController();
+
+	if (!PlayerController)
+	{
+		return;
+	}
+
+	ACharacter* Character =
+		Cast<ACharacter>(PlayerController->GetPawn());
 
 	if (!Character)
 	{
