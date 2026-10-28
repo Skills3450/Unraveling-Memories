@@ -17,6 +17,7 @@ void AGrabber_Enemy::Tick(float DeltaTime)
     Super::Tick(DeltaTime);
 
     UpdateGrab(DeltaTime);
+    UpdateStandUp(DeltaTime);
 }
 
 void AGrabber_Enemy::TryAttack(ACharacter* Target)
@@ -59,6 +60,7 @@ void AGrabber_Enemy::StartGrab(ACharacter* Target)
     GrabbedCharacter = nullptr;
 
     bIsGrabbing = true;
+    SetAttackState(true);
     bGrabHitChecked = false;
     bHasDealtGrabDamage = false;
 
@@ -265,6 +267,7 @@ void AGrabber_Enemy::EndGrab()
 
     GrabTarget = nullptr;
     bIsGrabbing = false;
+    SetAttackState(false);
     bGrabHitChecked = false;
     bHasDealtGrabDamage = false;
 
@@ -288,12 +291,47 @@ bool AGrabber_Enemy::IsGrabbing() const
     return bIsGrabbing;
 }
 
+
+void AGrabber_Enemy::OnPlayerSpotted()
+{
+    if (bHasStoodUp || IsWakingUp() || IsDead())
+    {
+        return;
+    }
+
+    bHasStoodUp = true;
+    StandUpTimeRemaining = FMath::Max(0.0f, StandUpDuration);
+
+    SetWakingUp(true);
+    SetCanMove(false);
+}
+
+void AGrabber_Enemy::UpdateStandUp(float DeltaTime)
+{
+    if (!IsWakingUp() || IsDead())
+    {
+        return;
+    }
+
+    StandUpTimeRemaining -= DeltaTime;
+
+    if (StandUpTimeRemaining <= 0.0f)
+    {
+        StandUpTimeRemaining = 0.0f;
+        SetWakingUp(false);
+        SetCanMove(true);
+    }
+}
+
+
 void AGrabber_Enemy::Die_Implementation()
 {
     if (bIsGrabbing)
     {
         EndGrab();
     }
+
+    SetWakingUp(false);
 
     Super::Die_Implementation();
 }
@@ -308,3 +346,5 @@ void AGrabber_Enemy::EndPlay(
 
     Super::EndPlay(EndPlayReason);
 }
+
+

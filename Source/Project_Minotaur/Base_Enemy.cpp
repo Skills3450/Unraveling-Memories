@@ -131,7 +131,7 @@ void ABase_Enemy::TryAttack(ACharacter* Target)
 
     AttackTarget = Target;
     bIsAttacking = true;
-
+    SetAttackState(true);
     AttackTimeRemaining = FMath::Max(
         0.0f,
         AttackDuration
@@ -277,7 +277,7 @@ void ABase_Enemy::FinishAttack()
 
     AttackTarget = nullptr;
     bIsAttacking = false;
-
+    SetAttackState(false);
     AttackTimeRemaining = 0.0f;
     AttackHitTimeRemaining = 0.0f;
     bHasAttackHit = false;
@@ -305,7 +305,7 @@ void ABase_Enemy::Die_Implementation()
     AttackTimeRemaining = 0.0f;
     AttackHitTimeRemaining = 0.0f;
     bHasAttackHit = false;
-
+    bIsInAttackState = false;
     RemoveAttackHitbox();
     SetCanMove(false);
 
@@ -319,4 +319,101 @@ void ABase_Enemy::Die_Implementation()
     GetMesh()->SetCollisionEnabled(
         ECollisionEnabled::NoCollision
     );
+}
+
+void ABase_Enemy::SetRunning(bool bNewRunning)
+{
+    if (IsDead())
+    {
+        return;
+    }
+
+    bIsRunning = bNewRunning;
+
+    if (UCharacterMovementComponent* Movement =
+        GetCharacterMovement())
+    {
+        Movement->MaxWalkSpeed = FMath::Max(
+            0.0f,
+            bIsRunning ? ChaseSpeed : MoveSpeed
+        );
+    }
+}
+
+bool ABase_Enemy::IsAtHome() const
+{
+    return bIsAtHome;
+}
+
+void ABase_Enemy::SetAtHome(bool bNewAtHome)
+{
+    bIsAtHome = bNewAtHome;
+}
+
+void ABase_Enemy::OnPlayerSpotted()
+{
+}
+
+
+bool ABase_Enemy::UsesWakeUp() const
+{
+    return bUseWakeUp;
+}
+bool ABase_Enemy::HasWokenUp() const
+{
+    return bHasWokenUp;
+}
+
+void ABase_Enemy::SetHasWokenUp(bool bNewHasWokenUp)
+{
+    bHasWokenUp = bNewHasWokenUp;
+}
+float ABase_Enemy::GetWakeDistance() const
+{
+    return WakeDistance;
+}
+
+bool ABase_Enemy::IsRunning() const
+{
+    return bIsRunning;
+}
+
+bool ABase_Enemy::IsWakingUp() const
+{
+    return bIsWakingUp;
+}
+
+void ABase_Enemy::SetWakingUp(bool bNewWakingUp)
+{
+    if (IsDead())
+    {
+        return;
+    }
+
+    bIsWakingUp = bNewWakingUp;
+}
+
+float ABase_Enemy::GetWakeDelay() const
+{
+    return WakeDelay;
+}
+
+bool ABase_Enemy::IsInAttackState() const
+{
+    return bIsInAttackState;
+}
+
+void ABase_Enemy::SetAttackState(bool bNewAttackState)
+{
+    if (IsDead() && bNewAttackState)
+    {
+        return;
+    }
+
+    bIsInAttackState = bNewAttackState;
+}
+
+float ABase_Enemy::GetSearchDuration() const
+{
+    return SearchDuration;
 }

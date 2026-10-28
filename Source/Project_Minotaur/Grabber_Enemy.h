@@ -23,6 +23,8 @@ public:
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Enemy|Animation")
     bool bIsGrabbing = false;
 
+    virtual void OnPlayerSpotted() override;
+
 protected:
     virtual void Die_Implementation() override;
 
@@ -45,6 +47,9 @@ protected:
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enemy|Grab", meta = (ClampMin = "0.0"))
     float GrabDamageDelay = 1.3f;
 
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enemy|Animation")
+    float StandUpDuration = 2.0f;
+
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enemy|Grab")
     float GrabRange = 120.0f;
 
@@ -66,7 +71,10 @@ private:
 
     UPROPERTY()
     TObjectPtr<ACharacter> GrabTarget;
+    bool bHasStoodUp = false;
+    float StandUpTimeRemaining = 0.0f;
 
+    void UpdateStandUp(float DeltaTime);
     float GrabTimeRemaining = 0.0f;
     float GrabHitTimeRemaining = 0.0f;
     float GrabHoldTimeRemaining = 0.0f;
