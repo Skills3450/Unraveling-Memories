@@ -17,37 +17,82 @@ public:
     virtual void Tick(float DeltaTime) override;
     virtual void TryAttack(ACharacter* Target) override;
 
-    UFUNCTION(BlueprintPure, Category = "Enemy|Grab")
+    UFUNCTION(BlueprintPure, Category = "Enemy|Animation")
     bool IsGrabbing() const;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Enemy|Animation")
+    bool bIsGrabbing = false;
+
+    virtual void OnPlayerSpotted() override;
 
 protected:
     virtual void Die_Implementation() override;
+
     virtual void EndPlay(
         const EEndPlayReason::Type EndPlayReason
     ) override;
 
-    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enemy|Grab")
-    float GrabDuration = 2.0f;
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enemy|Grab", meta = (ClampMin = "0.0"))
+    float GrabDuration = 2.5f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enemy|Grab", meta = (ClampMin = "0.0"))
+    float GrabHitDelay = 0.5f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enemy|Grab", meta = (ClampMin = "0.0"))
+    float GrabHoldDuration = 1.5f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enemy|Grab", meta = (ClampMin = "0.0"))
+    float GrabDamage = 20.0f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enemy|Grab", meta = (ClampMin = "0.0"))
+    float GrabDamageDelay = 1.3f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enemy|Animation")
+    float StandUpDuration = 2.0f;
 
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enemy|Grab")
     float GrabRange = 120.0f;
 
-    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enemy|Grab")
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enemy|Grab", meta = (ClampMin = "0.0"))
     float GrabCooldown = 10.0f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enemy|Grab|Hitbox")
+    FVector GrabHitboxExtent = FVector(50.0f, 70.0f, 80.0f);
+
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enemy|Grab|Hitbox")
+    FVector GrabHitboxOffset = FVector(85.0f, 0.0f, 0.0f);
+
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enemy|Debug")
+    bool bDrawGrabDebug = true;
 
 private:
     UPROPERTY()
     TObjectPtr<ACharacter> GrabbedCharacter;
 
-    bool bIsGrabbing = false;
+    UPROPERTY()
+    TObjectPtr<ACharacter> GrabTarget;
+    bool bHasStoodUp = false;
+    float StandUpTimeRemaining = 0.0f;
 
+    void UpdateStandUp(float DeltaTime);
     float GrabTimeRemaining = 0.0f;
+    float GrabHitTimeRemaining = 0.0f;
+    float GrabHoldTimeRemaining = 0.0f;
+    float GrabElapsedTime = 0.0f;
     float CooldownRemaining = 0.0f;
+
+    bool bGrabHitChecked = false;
+    bool bHasDealtGrabDamage = false;
 
     EMovementMode PreviousMovementMode = MOVE_Walking;
     uint8 PreviousCustomMovementMode = 0;
 
     void StartGrab(ACharacter* Target);
     void UpdateGrab(float DeltaTime);
+    void ApplyGrabHit();
+    void ApplyGrabDamage();
+    void ReleaseGrabbedCharacter();
     void EndGrab();
+
+    bool TryGrabWithHitbox(ACharacter* Target);
 };
