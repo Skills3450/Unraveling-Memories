@@ -1,16 +1,20 @@
-
 #include "EnemyAIController.h"
 #include "Base_Enemy.h"
 #include "GameFramework/Character.h"
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/CharacterMovementComponent.h"
-#include "Navigation/PathFollowingComponent.h"
+#include "Components/CapsuleComponent.h"
 #include "Engine/World.h"
-#include "Blueprint/AIBlueprintHelperLibrary.h"
+#include "NavigationSystem.h"
+#include "NavigationPath.h"
+#include "Components/SkeletalMeshComponent.h"
+#include "EngineUtils.h"
 
 AEnemyAIController::AEnemyAIController()
 {
     PrimaryActorTick.bCanEverTick = true;
+
+    bSetControlRotationFromPawnOrientation = false;
 }
 
 void AEnemyAIController::OnPossess(APawn* InPawn)
@@ -24,10 +28,13 @@ void AEnemyAIController::OnPossess(APawn* InPawn)
 
     HomeLocation = InPawn->GetActorLocation();
     HomeRotation = InPawn->GetActorRotation();
+    SetControlRotation(FRotator(0.0f, HomeRotation.Yaw, 0.0f));
 
     SetAIState(EEnemyAIState::Idle);
 
     WakeTimer = 0.0f;
+    SightingBroadcastCooldown = 0.0f;
+    SharedSightingTimeRemaining = 0.0f;
     AttackTrackingTime = 0.0f;
     bWasInAttackState = false;
     bHasLastKnownLocation = false;
@@ -38,11 +45,21 @@ void AEnemyAIController::OnPossess(APawn* InPawn)
         Enemy->SetHasWokenUp(bHasWokenUp);
 
         Enemy->bUseControllerRotationYaw = false;
+        Enemy->bUseControllerRotationPitch = false;
+        Enemy->bUseControllerRotationRoll = false;
 
         if (UCharacterMovementComponent* Movement =
             Enemy->GetCharacterMovement())
         {
             Movement->bOrientRotationToMovement = false;
+            Movement->bUseControllerDesiredRotation = false;
+        }
+
+        if (USkeletalMeshComponent* Mesh = Enemy->GetMesh())
+        {
+            const float MinRate = FMath::Max(0.01f, MinimumAnimationRate);
+            const float MaxRate = FMath::Max(MinRate, MaximumAnimationRate);
+            Mesh->GlobalAnimRateScale = FMath::FRandRange(MinRate, MaxRate);
         }
 
         Enemy->SetRunning(false);
@@ -64,6 +81,9 @@ void AEnemyAIController::Tick(float DeltaTime)
 
     APlayerController* PC = GetWorld()->GetFirstPlayerController();
     PlayerTarget = PC ? PC->GetPawn() : nullptr;
+
+    SightingBroadcastCooldown = FMath::Max(0.0f, SightingBroadcastCooldown - DeltaTime);
+    SharedSightingTimeRemaining = FMath::Max(0.0f, SharedSightingTimeRemaining - DeltaTime);
 
     if (!Enemy->UsesWakeUp())
     {
@@ -100,6 +120,7 @@ void AEnemyAIController::Tick(float DeltaTime)
         bHasLastKnownLocation = true;
 
         StartChasing();
+        WakeNearbyEnemies();
         return;
     }
 
@@ -148,9 +169,12 @@ void AEnemyAIController::Tick(float DeltaTime)
             LastKnownLocation = PlayerTarget->GetActorLocation();
             bHasLastKnownLocation = true;
         }
-        else
+        else if (CurrentState != EEnemyAIState::Searching)
         {
-            UpdateVision();
+            if (CurrentState != EEnemyAIState::Chasing || SharedSightingTimeRemaining <= 0.0f || CanSeePlayer())
+            {
+                UpdateVision();
+            }
         }
     }
     else if (CurrentState == EEnemyAIState::Chasing)
@@ -231,6 +255,12 @@ void AEnemyAIController::UpdateVision()
         LastKnownLocation = PlayerTarget->GetActorLocation();
         bHasLastKnownLocation = true;
 
+        if (SightingBroadcastCooldown <= 0.0f)
+        {
+            SightingBroadcastCooldown = 0.35f;
+            BroadcastPlayerSighting();
+        }
+
         if (CurrentState != EEnemyAIState::Chasing)
         {
             StartChasing();
@@ -247,15 +277,12 @@ void AEnemyAIController::RotateTowards(
     float DeltaTime)
 {
     ABase_Enemy* Enemy = Cast<ABase_Enemy>(GetPawn());
-
     if (!Enemy)
     {
         return;
     }
 
-    FVector Direction =
-        TargetLocation - Enemy->GetActorLocation();
-
+    FVector Direction = TargetLocation - Enemy->GetActorLocation();
     Direction.Z = 0.0f;
 
     if (Direction.IsNearlyZero())
@@ -263,14 +290,11 @@ void AEnemyAIController::RotateTowards(
         return;
     }
 
-    const FRotator NewRotation = FMath::RInterpTo(
-        Enemy->GetActorRotation(),
-        Direction.Rotation(),
-        DeltaTime,
-        ChaseTurnSpeed
-    );
-
-    Enemy->SetActorRotation(NewRotation);
+    const float CurrentYaw = Enemy->GetActorRotation().Yaw;
+    const float TargetYaw = Direction.Rotation().Yaw;
+    const float NewYaw = FMath::FixedTurn(
+        CurrentYaw, TargetYaw, ChaseTurnDegreesPerSecond * DeltaTime);
+    Enemy->SetActorRotation(FRotator(0.0f, NewYaw, 0.0f));
 }
 
 void AEnemyAIController::UpdateBehavior(float DeltaTime)
@@ -292,7 +316,6 @@ void AEnemyAIController::UpdateBehavior(float DeltaTime)
         break;
     }
 
-
     case EEnemyAIState::Chasing:
     {
         if (!IsValid(PlayerTarget))
@@ -301,72 +324,51 @@ void AEnemyAIController::UpdateBehavior(float DeltaTime)
             break;
         }
 
-        Enemy->SetRunning(true);
+        FVector ToPlayer = PlayerTarget->GetActorLocation() - Enemy->GetActorLocation();
+        ToPlayer.Z = 0.0f;
+        const float Distance = ToPlayer.Size();
 
-        const float Distance = FVector::Dist2D(
-            Enemy->GetActorLocation(),
-            PlayerTarget->GetActorLocation()
-        );
+        const float StopDistance = FMath::Max(0.0f, ChaseStopDistance);
 
-        if (GetMoveStatus() == EPathFollowingStatus::Moving)
+        if (Distance > StopDistance)
         {
-            RotateAlongNavPath(DeltaTime);
-        }
-        else
-        {
-            RotateTowards(
-                PlayerTarget->GetActorLocation(),
-                DeltaTime
-            );
+            const FVector FacingTarget = (Distance <= AttackRange + 50.0f || !bUseNavMeshChasing)
+                ? PlayerTarget->GetActorLocation()
+                : GetNavSteeringPoint(PlayerTarget->GetActorLocation(), DeltaTime);
+            RotateTowards(FacingTarget, DeltaTime);
         }
 
         if (Distance <= AttackRange &&
             (CanSeePlayer() || AttackTrackingTime > 0.0f))
         {
             Enemy->TryAttack(Cast<ACharacter>(PlayerTarget));
-
             if (!Enemy->CanMove())
             {
                 break;
             }
         }
 
-        if (Distance > ChaseStopDistance &&
-            GetMoveStatus() != EPathFollowingStatus::Moving)
-        {
-            MoveToActor(
-                PlayerTarget,
-                ChaseStopDistance,
-                false
-            );
-        }
+        Enemy->SetRunning(Distance > StopDistance);
 
         break;
     }
 
-
     case EEnemyAIState::Investigating:
     {
-        Enemy->SetRunning(true);
+        const float DistanceToTarget = FVector::Dist2D(
+            Enemy->GetActorLocation(), InvestigationTarget);
+        const float DistanceToLastSighting = FVector::Dist2D(
+            Enemy->GetActorLocation(), LastKnownLocation);
 
-        RotateAlongNavPath(DeltaTime);
-   
-
-        const float Distance = FVector::Dist2D(
-            Enemy->GetActorLocation(),
-            LastKnownLocation
-        );
-
-        if (Distance <= 120.0f ||
-            StateTimer >= InvestigationTimeout)
+        if (DistanceToTarget <= InvestigationArrivalRadius ||
+            DistanceToLastSighting <= InvestigationVicinityRadius)
         {
             StartSearching();
-        }
-        else if (GetMoveStatus() == EPathFollowingStatus::Idle)
-        {
-            MoveToLocation(LastKnownLocation, 85.0f);
+            break;
         }
 
+        Enemy->SetRunning(true);
+        RotateTowards(GetNavSteeringPoint(InvestigationTarget, DeltaTime), DeltaTime);
         break;
     }
 
@@ -380,9 +382,16 @@ void AEnemyAIController::UpdateBehavior(float DeltaTime)
             Movement->StopMovementImmediately();
         }
 
-        if (StateTimer >= Enemy->GetSearchDuration())
+        if (StateTimer >= FMath::Max(1.0f, Enemy->GetSearchDuration()))
         {
-            StartReturningHome();
+            if (SharedSightingTimeRemaining > 0.0f && IsValid(PlayerTarget))
+            {
+                StartChasing();
+            }
+            else
+            {
+                StartReturningHome();
+            }
         }
 
         break;
@@ -390,12 +399,8 @@ void AEnemyAIController::UpdateBehavior(float DeltaTime)
 
     case EEnemyAIState::ReturningHome:
     {
-        Enemy->SetRunning(false);
-
         const float Distance = FVector::Dist2D(
-            Enemy->GetActorLocation(),
-            HomeLocation
-        );
+            Enemy->GetActorLocation(), HomeLocation);
 
         if (Distance <= HomeAcceptanceRadius)
         {
@@ -403,13 +408,8 @@ void AEnemyAIController::UpdateBehavior(float DeltaTime)
             break;
         }
 
-        RotateAlongNavPath(DeltaTime);
-
-        if (GetMoveStatus() != EPathFollowingStatus::Moving)
-        {
-            MoveToLocation(HomeLocation, HomeAcceptanceRadius);
-        }
-
+        Enemy->SetRunning(true);
+        RotateTowards(GetNavSteeringPoint(HomeLocation, DeltaTime), DeltaTime);
         break;
     }
     }
@@ -417,8 +417,138 @@ void AEnemyAIController::UpdateBehavior(float DeltaTime)
 
 void AEnemyAIController::SetAIState(EEnemyAIState NewState)
 {
+    if (CurrentState == NewState)
+    {
+        return;
+    }
+
+    if (ABase_Enemy* Enemy = Cast<ABase_Enemy>(GetPawn()))
+    {
+        if (UCharacterMovementComponent* Movement = Enemy->GetCharacterMovement())
+        {
+            if (CurrentState == EEnemyAIState::Searching && bSearchMovementPaused)
+            {
+                Movement->SetMovementMode(PreviousSearchMovementMode, PreviousSearchCustomMovementMode);
+                bSearchMovementPaused = false;
+            }
+
+            if (NewState == EEnemyAIState::Searching)
+            {
+                PreviousSearchMovementMode = Movement->MovementMode;
+                PreviousSearchCustomMovementMode = Movement->CustomMovementMode;
+                Movement->StopMovementImmediately();
+                Movement->DisableMovement();
+                bSearchMovementPaused = true;
+            }
+        }
+    }
+
     CurrentState = NewState;
     StateTimer = 0.0f;
+    NavigationRefreshRemaining = 0.0f;
+}
+
+void AEnemyAIController::WakeFromNearbyEnemy(APawn* SharedTarget)
+{
+    ABase_Enemy* Enemy = Cast<ABase_Enemy>(GetPawn());
+    if (!Enemy || Enemy->IsDead() || bHasWokenUp || !IsValid(SharedTarget))
+    {
+        return;
+    }
+
+    PlayerTarget = SharedTarget;
+    bHasWokenUp = true;
+    Enemy->SetHasWokenUp(true);
+    WakeTimer = 0.0f;
+    LastKnownLocation = SharedTarget->GetActorLocation();
+    bHasLastKnownLocation = true;
+    StartChasing();
+}
+
+void AEnemyAIController::ReceivePlayerSighting(
+    APawn* SharedTarget,
+    const FVector& ReportedLocation)
+{
+    ABase_Enemy* Enemy = Cast<ABase_Enemy>(GetPawn());
+    if (!Enemy || Enemy->IsDead() || !IsValid(SharedTarget))
+    {
+        return;
+    }
+
+    if (!bHasWokenUp)
+    {
+        WakeFromNearbyEnemy(SharedTarget);
+    }
+
+    PlayerTarget = SharedTarget;
+    LastKnownLocation = ReportedLocation;
+    bHasLastKnownLocation = true;
+    SharedSightingTimeRemaining = 1.0f;
+
+    if (Enemy->CanMove() && CurrentState != EEnemyAIState::Chasing &&
+        CurrentState != EEnemyAIState::Searching)
+    {
+        StartChasing();
+    }
+}
+
+void AEnemyAIController::BroadcastPlayerSighting()
+{
+    const ABase_Enemy* SourceEnemy = Cast<ABase_Enemy>(GetPawn());
+    if (!SourceEnemy || !GetWorld() || !IsValid(PlayerTarget))
+    {
+        return;
+    }
+
+    const FVector SourceLocation = SourceEnemy->GetActorLocation();
+    const FVector ReportedLocation = PlayerTarget->GetActorLocation();
+    const float RadiusSquared = FMath::Square(FMath::Max(0.0f, WakeAllyRadius));
+
+    for (TActorIterator<ABase_Enemy> It(GetWorld()); It; ++It)
+    {
+        ABase_Enemy* OtherEnemy = *It;
+        if (!IsValid(OtherEnemy) || OtherEnemy == SourceEnemy || OtherEnemy->IsDead() ||
+            FVector::DistSquared(SourceLocation, OtherEnemy->GetActorLocation()) > RadiusSquared)
+        {
+            continue;
+        }
+
+        if (AEnemyAIController* OtherController = Cast<AEnemyAIController>(OtherEnemy->GetController()))
+        {
+            OtherController->ReceivePlayerSighting(PlayerTarget.Get(), ReportedLocation);
+        }
+    }
+}
+
+void AEnemyAIController::WakeNearbyEnemies()
+{
+    ABase_Enemy* SourceEnemy = Cast<ABase_Enemy>(GetPawn());
+    if (!SourceEnemy || !IsValid(PlayerTarget) || !GetWorld())
+    {
+        return;
+    }
+
+    const float RadiusSquared = FMath::Square(FMath::Max(0.0f, WakeAllyRadius));
+    const FVector SourceLocation = SourceEnemy->GetActorLocation();
+
+    for (TActorIterator<ABase_Enemy> It(GetWorld()); It; ++It)
+    {
+        ABase_Enemy* OtherEnemy = *It;
+        if (!IsValid(OtherEnemy) || OtherEnemy == SourceEnemy || OtherEnemy->IsDead())
+        {
+            continue;
+        }
+
+        if (FVector::DistSquared(SourceLocation, OtherEnemy->GetActorLocation()) > RadiusSquared)
+        {
+            continue;
+        }
+
+        if (AEnemyAIController* OtherController = Cast<AEnemyAIController>(OtherEnemy->GetController()))
+        {
+            OtherController->WakeFromNearbyEnemy(PlayerTarget.Get());
+        }
+    }
 }
 
 void AEnemyAIController::StartChasing()
@@ -429,7 +559,6 @@ void AEnemyAIController::StartChasing()
     }
 
     ABase_Enemy* Enemy = Cast<ABase_Enemy>(GetPawn());
-
     if (!Enemy)
     {
         return;
@@ -447,6 +576,7 @@ void AEnemyAIController::StartChasing()
         Enemy->GetCharacterMovement())
     {
         Movement->bOrientRotationToMovement = false;
+        Movement->bUseControllerDesiredRotation = false;
     }
 
     if (bWasAtHome)
@@ -454,9 +584,88 @@ void AEnemyAIController::StartChasing()
         Enemy->OnPlayerSpotted();
     }
 
-    if (Enemy->CanMove())
+}
+
+void AEnemyAIController::ChooseInvestigationTarget()
+{
+    InvestigationTarget = LastKnownLocation;
+
+    if (!bHasLastKnownLocation || !GetWorld())
     {
-        MoveToActor(PlayerTarget, ChaseStopDistance, false);
+        return;
+    }
+
+    UNavigationSystemV1* NavSystem =
+        FNavigationSystem::GetCurrent<UNavigationSystemV1>(GetWorld());
+
+    if (!NavSystem)
+    {
+        return;
+    }
+
+    const float MaxRadius = FMath::Max(0.0f, InvestigationSpreadRadius);
+    const float MinimumRadius = FMath::Min(90.0f, MaxRadius);
+    const float MinSeparationSquared =
+        FMath::Square(FMath::Max(0.0f, InvestigationMinimumSeparation));
+
+    for (int32 Attempt = 0; Attempt < 16; ++Attempt)
+    {
+        const float Angle = FMath::FRandRange(0.0f, 2.0f * PI);
+        const float Radius = FMath::FRandRange(MinimumRadius, MaxRadius);
+        const FVector Candidate = LastKnownLocation + FVector(
+            FMath::Cos(Angle) * Radius,
+            FMath::Sin(Angle) * Radius,
+            0.0f);
+
+        FNavLocation Projected;
+        if (!NavSystem->ProjectPointToNavigation(
+            Candidate, Projected, FVector(120.0f, 120.0f, 200.0f)))
+        {
+            continue;
+        }
+
+        bool bTooCloseToAnotherTarget = false;
+        for (TActorIterator<AEnemyAIController> It(GetWorld()); It; ++It)
+        {
+            const AEnemyAIController* Other = *It;
+            if (!IsValid(Other) || Other == this ||
+                Other->CurrentState != EEnemyAIState::Investigating ||
+                FVector::DistSquared2D(Other->LastKnownLocation, LastKnownLocation) >
+                FMath::Square(InvestigationSpreadRadius * 2.0f))
+            {
+                continue;
+            }
+
+            if (FVector::DistSquared2D(
+                Projected.Location, Other->InvestigationTarget) < MinSeparationSquared)
+            {
+                bTooCloseToAnotherTarget = true;
+                break;
+            }
+        }
+
+        if (bTooCloseToAnotherTarget)
+        {
+            continue;
+        }
+
+        if (UNavigationPath* Path =
+            UNavigationSystemV1::FindPathToLocationSynchronously(
+                this, GetPawn()->GetActorLocation(), Projected.Location, GetPawn()))
+        {
+            if (Path->IsValid() && !Path->IsPartial())
+            {
+                InvestigationTarget = Projected.Location;
+                return;
+            }
+        }
+    }
+
+    FNavLocation ProjectedLastSeen;
+    if (NavSystem->ProjectPointToNavigation(
+        LastKnownLocation, ProjectedLastSeen, FVector(120.0f, 120.0f, 200.0f)))
+    {
+        InvestigationTarget = ProjectedLastSeen.Location;
     }
 }
 
@@ -476,8 +685,7 @@ void AEnemyAIController::StartInvestigation()
     }
 
     SetAIState(EEnemyAIState::Investigating);
-
-    MoveToLocation(LastKnownLocation, 85.0f);
+    ChooseInvestigationTarget();
 }
 
 void AEnemyAIController::StartSearching()
@@ -503,7 +711,7 @@ void AEnemyAIController::StartReturningHome()
 
     if (ABase_Enemy* Enemy = Cast<ABase_Enemy>(GetPawn()))
     {
-        Enemy->SetRunning(false);
+        Enemy->SetRunning(true);
         Enemy->SetAtHome(false);
 
         if (UCharacterMovementComponent* Movement =
@@ -513,7 +721,6 @@ void AEnemyAIController::StartReturningHome()
         }
     }
 
-    MoveToLocation(HomeLocation, HomeAcceptanceRadius);
 }
 
 void AEnemyAIController::FinishReturningHome()
@@ -525,33 +732,50 @@ void AEnemyAIController::FinishReturningHome()
         Enemy->SetRunning(false);
         Enemy->SetAtHome(true);
 
-        Enemy->SetActorRotation(HomeRotation);
+        Enemy->SetActorRotation(FRotator(0.0f, HomeRotation.Yaw, 0.0f));
     }
 
     SetAIState(EEnemyAIState::Idle);
 }
 
-
-
-void AEnemyAIController::RotateAlongNavPath(float DeltaTime)
+FVector AEnemyAIController::GetNavSteeringPoint(
+    const FVector& GoalLocation,
+    float DeltaTime)
 {
-    ABase_Enemy* Enemy = Cast<ABase_Enemy>(GetPawn());
-
-    if (!Enemy)
+    APawn* ControlledPawn = GetPawn();
+    if (!ControlledPawn)
     {
-        return;
+        return GoalLocation;
     }
 
-    if (UPathFollowingComponent* PathFollowing =
-        GetPathFollowingComponent())
+    NavigationRefreshRemaining -= DeltaTime;
+    const bool bGoalChanged = FVector::DistSquared2D(
+        CachedNavigationGoal, GoalLocation) > FMath::Square(100.0f);
+
+    if (NavigationRefreshRemaining <= 0.0f || bGoalChanged)
     {
-        if (GetMoveStatus() == EPathFollowingStatus::Moving)
+        NavigationRefreshRemaining = FMath::Max(0.1f, NavigationRefreshInterval);
+        CachedNavigationGoal = GoalLocation;
+        CachedNavigationPoint = GoalLocation;
+
+        if (UNavigationPath* Path = UNavigationSystemV1::FindPathToLocationSynchronously(
+            this, ControlledPawn->GetActorLocation(), GoalLocation, ControlledPawn))
         {
-            RotateTowards(
-                PathFollowing->GetCurrentTargetLocation(),
-                DeltaTime
-            );
+            if (Path->IsValid() && Path->PathPoints.Num() > 1)
+            {
+                const FVector PawnLocation = ControlledPawn->GetActorLocation();
+                for (int32 Index = 1; Index < Path->PathPoints.Num(); ++Index)
+                {
+                    if (FVector::DistSquared2D(Path->PathPoints[Index], PawnLocation) >
+                        FMath::Square(NextWaypointAcceptanceRadius))
+                    {
+                        CachedNavigationPoint = Path->PathPoints[Index];
+                        break;
+                    }
+                }
+            }
         }
     }
-}
 
+    return CachedNavigationPoint;
+}
